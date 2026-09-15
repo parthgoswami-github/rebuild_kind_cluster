@@ -4,6 +4,7 @@
 set -e
 
 echo "=== 0. Updating repository and navigating to working directory ==="
+cd
 cd src/ADMIN-238_Admin_K8s/
 git pull --rebase
 cd 03_Installing/03-04-02_CNI/
