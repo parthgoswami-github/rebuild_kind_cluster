@@ -32,8 +32,28 @@ sleep 5
 echo -e "\n=== 5. Applying custom Calico configuration ==="
 kubectl apply -f calico-custom-config.yaml --server-side --field-manager=calico-config
 
-echo -e "\n=== 6. Watching pods across calico-system, kube-system, and tigera-operator namespaces for 2 minutes ==="
-timeout 100s kubectl get pods --all-namespaces --watch | grep --line-buffered -E "NAMESPACE|calico-system|kube-system|tigera-operator" || true
+echo -e "\n=== 6a. Watching pods (Initial 10 seconds) ==="
+timeout 10s kubectl get pods --all-namespaces --watch | grep --line-buffered -E "NAMESPACE|calico-system|kube-system|tigera-operator" || true
+
+echo -e "\n=== Checking & Installing Helm ==="
+if command -v helm &> /dev/null; then
+    echo "Helm is already installed:"
+    helm version
+else
+    echo "Helm not found. Installing Helm..."
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 755 get_helm.sh
+    ./get_helm.sh
+    rm -f get_helm.sh
+    echo "Helm successfully installed:"
+    helm version
+fi
+
+echo -e "\nWaiting for 10 seconds before starting the main watch..."
+sleep 10
+
+echo -e "\n=== 6b. Watching pods (Remaining 90 seconds) ==="
+timeout 90s kubectl get pods --all-namespaces --watch | grep --line-buffered -E "NAMESPACE|calico-system|kube-system|tigera-operator" || true
 
 echo -e "\n=== 7. Getting nodes ==="
 kubectl get nodes
