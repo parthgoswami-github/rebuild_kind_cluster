@@ -59,8 +59,8 @@ helm upgrade --install metrics-server metrics-server/metrics-server \
   --set 'args={--kubelet-insecure-tls}' \
   --wait
 
-echo -e "\n=== 14. Watching pods (Remaining 90 seconds) ==="
-timeout 90s kubectl get pods --all-namespaces --watch | grep --line-buffered -E "NAMESPACE|calico-system|kube-system|tigera-operator" || true
+echo -e "\n=== 14. Watching pods (Remaining 70 seconds) ==="
+timeout 70s kubectl get pods --all-namespaces --watch | grep --line-buffered -E "NAMESPACE|calico-system|kube-system|tigera-operator" || true
 
 echo -e "\n=== 15. Getting nodes ==="
 kubectl get nodes
