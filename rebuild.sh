@@ -49,9 +49,10 @@ fi
 echo -e "\n=== 11. Waiting for 10 seconds before proceeding... ==="
 sleep 10
 
-echo -e "\n=== 12. Adding Helm repositories (Metrics Server & MetalLB) ==="
+echo -e "\n=== 12. Adding Helm repositories (Metrics Server, MetalLB & Headlamp) ==="
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm repo add metallb https://metallb.github.io/metallb
+helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
 helm repo update
 
 echo -e "\n=== 13. Installing/Upgrading Metrics Server via Helm ==="
@@ -103,7 +104,21 @@ kubectl apply -f metallb-conf.yaml
 echo -e "\n=== 23. Watching MetalLB pods (10 seconds) ==="
 timeout 10s kubectl get pods -n metallb-system -w || true
 
-echo -e "\n=== 24. Re-cloning repository ==="
+echo -e "\nWaiting 5 seconds before installing Headlamp..."
+sleep 5
+
+echo -e "\n=== 24. Installing Headlamp via Helm ==="
+helm install headlamp headlamp/headlamp \
+  --namespace headlamp --create-namespace \
+  --set service.type=LoadBalancer
+
+echo -e "\n=== 25. Verifying Headlamp Resources ==="
+kubectl -n headlamp get all
+
+echo -e "\nWaiting 5 seconds for visual verification..."
+sleep 5
+
+echo -e "\n=== 26. Re-cloning repository ==="
 cd ~/src
 rm -rf ADMIN-238_Admin_K8s
 git clone https://github.com/wmdailey/ADMIN-238_Admin_K8s.git
