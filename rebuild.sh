@@ -46,22 +46,32 @@ else
     helm version
 fi
 
-echo -e "\n=== 11. Waiting for 10 seconds before starting the main watch... ==="
+echo -e "\n=== 11. Waiting for 10 seconds before proceeding... ==="
 sleep 10
 
-echo -e "\n=== 12. Watching pods (Remaining 90 seconds) ==="
+echo -e "\n=== 12. Adding Metrics Server Helm repository ==="
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm repo update
+
+echo -e "\n=== 13. Installing/Upgrading Metrics Server via Helm ==="
+helm upgrade --install metrics-server metrics-server/metrics-server \
+  --namespace kube-system \
+  --set 'args={--kubelet-insecure-tls}' \
+  --wait
+
+echo -e "\n=== 14. Watching pods (Remaining 90 seconds) ==="
 timeout 90s kubectl get pods --all-namespaces --watch | grep --line-buffered -E "NAMESPACE|calico-system|kube-system|tigera-operator" || true
 
-echo -e "\n=== 13. Getting nodes ==="
+echo -e "\n=== 15. Getting nodes ==="
 kubectl get nodes
 
-echo -e "\n=== 14. Getting pods in kube-system ==="
+echo -e "\n=== 16. Getting pods in kube-system ==="
 kubectl get pods -n kube-system
 
-echo -e "\n=== 15. Getting pods in calico-system ==="
+echo -e "\n=== 17. Getting pods in calico-system ==="
 kubectl get pods -n calico-system
 
-echo -e "\n=== 16. Re-cloning repository ==="
+echo -e "\n=== 18. Re-cloning repository ==="
 cd ~/src
 rm -rf ADMIN-238_Admin_K8s
 git clone https://github.com/wmdailey/ADMIN-238_Admin_K8s.git
