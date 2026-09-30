@@ -3,6 +3,95 @@
 # Exit immediately if a command fails
 set -e
 
+# Parse command line flags
+HEADLAMP_ONLY=false
+for arg in "$@"; do
+  if [ "$arg" == "--headlamp" ]; then
+    HEADLAMP_ONLY=true
+  fi
+done
+
+# If --headlamp flag is provided, skip the cluster rebuild steps and run ONLY the Headlamp setup
+if [ "$HEADLAMP_ONLY" = true ]; then
+  echo "=== '--headlamp' flag detected: Skipping cluster rebuild and installing Headlamp on existing cluster ==="
+
+  # Ensure we are in the repo directory at the end regardless
+  cd ~/src/ADMIN-238_Admin_K8s 2>/dev/null || cd ~/src
+
+  echo -e "\n=== Installing and Configuring Headlamp ==="
+  
+  echo "--> Adding Headlamp Helm repository..."
+  helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
+  helm repo update
+
+  echo -e "\n--> Installing Headlamp via Helm..."
+  helm install headlamp headlamp/headlamp \
+    --namespace headlamp --create-namespace \
+    --set service.type=LoadBalancer
+
+  echo -e "\n=== Configuring Headlamp Service Accounts & Permissions ==="
+  
+  echo "--> Checking current resources in 'headlamp' namespace..."
+  kubectl -n headlamp get all
+  
+  echo "--> Checking Headlamp service details..."
+  kubectl -n headlamp get svc headlamp
+  
+  echo "--> Creating 'headlamp-admin' ServiceAccount..."
+  kubectl -n headlamp create serviceaccount headlamp-admin
+  
+  echo "--> Creating 'headlamp-read-only' ServiceAccount..."
+  kubectl -n headlamp create serviceaccount headlamp-read-only
+  
+  echo "--> Binding 'headlamp-admin' ServiceAccount to 'cluster-admin' ClusterRole..."
+  kubectl create clusterrolebinding headlamp-admin-binding --clusterrole=cluster-admin --serviceaccount=headlamp:headlamp-admin
+  
+  echo "--> Binding 'headlamp-read-only' ServiceAccount to 'view' ClusterRole..."
+  kubectl create clusterrolebinding headlamp-read-only-binding --clusterrole=view --serviceaccount=headlamp:headlamp-read-only
+  
+  echo "--> Generating 24-hour admin access token..."
+  ADMIN_TOKEN=$(kubectl -n headlamp create token headlamp-admin --duration 86400s)
+  
+  echo "--> Generating read-only access token..."
+  kubectl -n headlamp create token headlamp-read-only > /dev/null
+  
+  echo "--> Checking status of services in 'headlamp' namespace..."
+  kubectl -n headlamp get svc
+
+  echo -e "\n--> Waiting for MetalLB to assign an External IP to the Headlamp service..."
+  until [ -n "$(kubectl -n headlamp get svc headlamp -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)" ]; do
+    sleep 2
+  done
+  
+  HEADLAMP_IP=$(kubectl -n headlamp get svc headlamp -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo "--> Headlamp External IP assigned: ${HEADLAMP_IP}"
+
+  echo "--> Updating /etc/hosts entry for 'headlamp.local'..."
+  if grep -q "headlamp.local" /etc/hosts; then
+    sudo sed -i "s/.*headlamp.local/${HEADLAMP_IP} headlamp.local/" /etc/hosts
+  else
+    echo "${HEADLAMP_IP} headlamp.local" | sudo tee -a /etc/hosts > /dev/null
+  fi
+
+  echo -e "\n================================================================="
+  echo -e "                 HEADLAMP ACCESS INSTRUCTIONS                    "
+  echo -e "================================================================="
+  echo -e "1. Copy and paste the URL into your browser:"
+  echo -e "   http://headlamp.local\n"
+  echo -e "2. Accept the risk and proceed to the website.\n"
+  echo -e "3. Paste the following Admin Token when prompted:\n"
+  echo -e "${ADMIN_TOKEN}\n"
+  echo -e "=================================================================\n"
+
+  # Preserve working directory and spawn shell
+  cd ~/src/ADMIN-238_Admin_K8s
+  exec $SHELL
+fi
+
+# ==============================================================================
+# FULL REBUILD WORKFLOW (Runs when NO --headlamp flag is passed)
+# ==============================================================================
+
 echo "=== 1. Navigating to working directory ==="
 cd ~/rebuild_kind_cluster/code
 
@@ -49,10 +138,9 @@ fi
 echo -e "\n=== 11. Waiting for 10 seconds before proceeding... ==="
 sleep 10
 
-echo -e "\n=== 12. Adding Helm repositories (Metrics Server, MetalLB & Headlamp) ==="
+echo -e "\n=== 12. Adding Helm repositories (Metrics Server & MetalLB) ==="
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm repo add metallb https://metallb.github.io/metallb
-helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
 helm repo update
 
 echo -e "\n=== 13. Installing/Upgrading Metrics Server via Helm ==="
@@ -104,26 +192,18 @@ kubectl apply -f metallb-conf.yaml
 echo -e "\n=== 23. Watching MetalLB pods (10 seconds) ==="
 timeout 10s kubectl get pods -n metallb-system -w || true
 
-echo -e "\nWaiting 5 seconds before installing Headlamp..."
-sleep 5
-
-echo -e "\n=== 24. Installing Headlamp via Helm ==="
-helm install headlamp headlamp/headlamp \
-  --namespace headlamp --create-namespace \
-  --set service.type=LoadBalancer
-
-echo -e "\n=== 25. Verifying Headlamp Resources ==="
-kubectl -n headlamp get all
-
-echo -e "\nWaiting 5 seconds for visual verification..."
-sleep 5
-
-echo -e "\n=== 26. Re-cloning repository ==="
+echo -e "\n=== 24. Re-cloning repository ==="
 cd ~/src
 rm -rf ADMIN-238_Admin_K8s
 git clone https://github.com/wmdailey/ADMIN-238_Admin_K8s.git
 cd ADMIN-238_Admin_K8s
 ls
+
+echo -e "\n================================================================="
+echo -e "[INFO] Headlamp setup was skipped."
+echo -e "If you wish to install and configure Headlamp, run:"
+echo -e "  ./rebuild.sh --headlamp"
+echo -e "=================================================================\n"
 
 # Spawns an interactive shell to preserve the target directory in your current terminal session
 exec $SHELL
